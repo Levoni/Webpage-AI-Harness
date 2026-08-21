@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audio Recorder</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      min-height: 100vh;
+      margin: 0;
+      background: #f7f7f9;
+    }
+
+    header {
+      width: 100%;
+      padding: 1rem;
+      background: #1a1a2e;
+      color: #fff;
+    }
+
+    h1 { margin: 0; text-align: center; }
+
+    button {
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #1a1a2e;
+      color: #fff;
+    }
+
+    button.recording {
+      background: #c0392b;
+    }
+
+    #status {
+      min-height: 1.5em;
+      color: #555;
+    }
+
+    textarea {
+      width: 100%;
+      max-width: 420px;
+      min-height: 10rem;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ai Model Audio Prompt</h1>
+  </header>
+
+  <button id="micButton">🎙️ Click to listen</button>
+  <p id="status">Press the button to start recording.</p>
+  <textarea id="response" rows="8" readonly></textarea>
+
+  <script>
+    let isListening = false;
+    let recorder = null;
+    let chunks = [];
+    let timeoutId = null;
+
+    const button = document.getElementById("micButton");
+    const status = document.getElementById("status");
+    const responseBox = document.getElementById("response");
+
+    function toggleListening() {
+      if (isListening) {
+        stopListening();
+      } else {
+        startListening();
+      }
+    }
+
+    async function startListening() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        isListening = true;
+        chunks = [];
+        status.textContent = "Recording... will auto-stop after 10 seconds.";
+        button.textContent = "⏹ Click to stop";
+        button.classList.add("recording");
+
+        // Explicitly request audio/webm with Opus codec
+        const options = { mimeType: 'audio/webm;codecs=opus' };
+        recorder = new MediaRecorder(stream, options);
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) chunks.push(event.data);
+        };
+        recorder.onstop = () => {
+          stream.getTracks().forEach(track => track.stop());
+          sendAudio();
+        };
+        recorder.start();
+
+        timeoutId = setTimeout(stopListening, 10000);
+
+      } catch (err) {
+        console.error("Could not access microphone:", err);
+        status.textContent = "Could not access the microphone.";
+      }
+    }
+
+    function stopListening() {
+      clearTimeout(timeoutId);
+      button.textContent = "🎙️ Click to listen";
+      button.classList.remove("recording");
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+      }
+      isListening = false;
+    }
+
+    function sendAudio() {
+      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      status.textContent = "Sending audio to API...";
+      responseBox.value = "";
+
+      // Download the recorded audio
+      // downloadAudio(blob, "recorded-audio.webm");
+
+      fetch("http://localhost:3000/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: blob,
+      }).then(res => res.json())
+        .then(data => {
+          console.log(data);
+          responseBox.value = data.reply || "";
+          let audioBuffer = data.audio; // Assuming the API returns audio data in a suitable format
+          
+          // Download the API response audio
+          // if (data.audio) {
+          //   const responseBytes = new Uint8Array(data.audio.data);
+          //   const responseBlob = new Blob([responseBytes], { type: "audio/mpeg" });
+          //   downloadAudio(responseBlob, "response-audio.mp3");
+          // }
+          
+          playMp3(data.audio).catch(err => {
+            console.error("Error playing audio:", err);
+            status.textContent = "Error playing audio.";
+          });
+          status.textContent = "Recording sent.";
+        })
+        .catch(() => {
+          status.textContent = "Error sending audio.";
+        });
+    }
+
+    function playMp3(bufferObject) {
+      const bytes = new Uint8Array(bufferObject.data);
+    
+      const blob = new Blob([bytes], {
+        type: "audio/mpeg"
+      });
+    
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+    
+      audio.addEventListener("ended", () => {
+        URL.revokeObjectURL(url);
+      }, { once: true });
+    
+      return audio.play().then(() => audio);
+    }
+
+    function downloadAudio(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+    }
+
+    button.addEventListener("click", toggleListening);
+  </script>
+</body>
+</html>

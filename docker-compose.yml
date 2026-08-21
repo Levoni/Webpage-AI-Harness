@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./Transcribe API
+      dockerfile: Dockerfile
+    container_name: voice-ai-api
+    ports:
+      - "3000:3000"
+    environment:
+      - HA_URL=${HA_URL:-http://192.168.0.176:8123}
+      - HA_TOKEN=${HA_TOKEN}
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - WHISPER_CLI=${WHISPER_CLI:-/app/whisper.cpp/build/bin/Release/whisper-cli}
+      - WHISPER_MODEL=${WHISPER_MODEL:-/app/whisper.cpp/ggml-base.bin}
+      - FFMPEG=${FFMPEG:-ffmpeg}
+    volumes:
+      - /tmp/whisper-work:/tmp/whisper-work
+    networks:
+      - voice-ai
+    depends_on:
+      - web
+
+  web:
+    build:
+      context: ./Web Voice Interface
+      dockerfile: Dockerfile
+    container_name: voice-ai-web
+    ports:
+      - "80:80"
+    environment:
+      - API_URL=http://localhost:3000
+    networks:
+      - voice-ai
+
+networks:
+  voice-ai:
+    driver: bridge
