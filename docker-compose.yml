@@ -6,8 +6,6 @@ services:
       context: ./Transcribe API
       dockerfile: Dockerfile
     container_name: voice-ai-api
-    ports:
-      - "3000:3000"
     environment:
       - HA_URL=${HA_URL:-http://192.168.0.176:8123}
       - HA_TOKEN=${HA_TOKEN}
@@ -19,8 +17,6 @@ services:
       - /tmp/whisper-work:/tmp/whisper-work
     networks:
       - voice-ai
-    depends_on:
-      - web
 
   web:
     build:
@@ -29,11 +25,11 @@ services:
     container_name: voice-ai-web
     ports:
       - "80:80"
-    environment:
-      - API_URL=http://localhost:3000
     networks:
       - voice-ai
       - WebApp-network
+    depends_on:
+      - api
 
 networks:
   voice-ai:
