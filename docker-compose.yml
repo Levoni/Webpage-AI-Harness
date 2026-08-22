@@ -33,7 +33,10 @@ services:
       - API_URL=http://localhost:3000
     networks:
       - voice-ai
+      - WebApp-network
 
 networks:
   voice-ai:
     driver: bridge
+  WebApp-network:
+    external: true

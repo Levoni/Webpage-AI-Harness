@@ -56,12 +56,47 @@
   <header>
     <h1>Ai Model Audio Prompt</h1>
   </header>
+  <script src="api-config.js"></script>
 
   <button id="micButton">🎙️ Click to listen</button>
   <p id="status">Press the button to start recording.</p>
   <textarea id="response" rows="8" readonly></textarea>
 
   <script>
+    // ---- Auth guard: require a token cookie, verify it, otherwise go to login ----
+    function getCookie(name) {
+      const parts = document.cookie.split(";");
+      for (const part of parts) {
+        const idx = part.indexOf("=");
+        if (idx > -1 && part.slice(0, idx) === name) {
+          return part.slice(idx + 1);
+        }
+      }
+      return null;
+    }
+
+    async function init() {
+      const token = getCookie("auth_token");
+      console.log("Token cookie:", token);
+      if (token) {
+        try {
+          const res = await fetch(API_BASE + "/login/verify", {
+            method: "GET",
+            headers: { Authorization: "Bearer " + token },
+          });
+          if (res.status === 200) {
+            return; // verified — keep the page
+          }
+        } catch (e) {
+          return; // network error — keep the page
+        }
+      }
+      window.location.replace("login.html");
+    }
+
+    init();
+    // ---- End auth guard ----
+
     let isListening = false;
     let recorder = null;
     let chunks = [];
@@ -126,7 +161,7 @@
       // Download the recorded audio
       // downloadAudio(blob, "recorded-audio.webm");
 
-      fetch("http://localhost:3000/transcribe", {
+      fetch(API_BASE + "/transcribe", {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
         body: blob,
