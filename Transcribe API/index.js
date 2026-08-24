@@ -27,6 +27,7 @@ const WHISPER_MODEL = process.env.WHISPER_MODEL || './whisper.cpp/ggml-base.bin'
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 // Ollama listens on localhost by default, port 11434
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
+const OLLAMA_UNREACHABLE_MESSAGE = "Ollama could not be reached.";
 
 // Scratch dir for uploads + intermediate files
 const WORK_DIR = path.join(os.tmpdir(), `whisper-${process.pid}`);
@@ -116,7 +117,9 @@ async function sendTextToOllama(model, chat, { system, stream = false, tools = n
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, messages, stream, tools }),
   }).catch((err) => {
-    throw new Error(`Could not reach Ollama at ${OLLAMA_URL}: ${err.message}`);
+    const ollamaError = new Error(OLLAMA_UNREACHABLE_MESSAGE);
+    ollamaError.code = "OLLAMA_UNREACHABLE";
+    throw ollamaError;
   });
 
   if (!res.ok) {
@@ -160,10 +163,44 @@ async function kokoroSpeech(text, {
   return Buffer.from(arrayBuffer);
 }
 
+/**
+ * Run the Home agent loop: send text to Ollama, execute any tool calls it
+ * requests, and return the model's final reply text.
+ *
+ * @param {string} text - The user request to send to the home agent
+ * @returns {Promise<string>} The final reply text
+ */
+async function runHomeAgent(text) {
+  const chat = [{ role: 'user', content: text }];
+  let reply = await sendTextToOllama('4skl/gemma4-e4b-mtp', chat, { system: 'You are a home assistant agent. You will resolve unknown entities with the get_home_entities tool and not ask the user for entity IDs.', tools: availableTools });
+  while (reply.message.tool_calls && reply.message.tool_calls.length > 0) {
+    for (const toolCall of reply.message.tool_calls) {
+      console.log(`Tool call: ${toolCall.function.name} with arguments: ${JSON.stringify(toolCall.function.arguments)}`);
+      const result = await toolHandler.handleTool(toolCall.function.name, toolCall.function.arguments);
+      chat.push({ role: 'user', content: `${result}` });
+    }
+
+    reply = await sendTextToOllama('4skl/gemma4-e4b-mtp', chat, { system: 'You are a home assistant agent who gives a status of what changed once all tools are used.', tools: availableTools });
+  }
+  return reply.message.content;
+}
+
+// Generate spoken audio for an error message; fall back to text-only if
+// the TTS service is also unreachable.
+async function errorAudio(message) {
+  try {
+    return await kokoroSpeech(message, { voice: 'af_heart', speed: 1.0, responseFormat: 'mp3' });
+  } catch (err) {
+    console.log('Could not generate audio for error message:', err);
+    return null;
+  }
+}
+
 // ── API ────────────────────────────────────────────────────────────
 const app = express();
 
 app.use(cors());
+app.use(express.json());
 
 
 
@@ -191,20 +228,10 @@ app.post(
       }
 
       if (text.toLowerCase().startsWith('home')) {
-        const chat = [{ role: 'user', content: text }];
-        let reply = await sendTextToOllama('4skl/gemma4-e4b-mtp', chat, { system: 'You are a home assistant agent.', tools: availableTools });
-        while (reply.message.tool_calls && reply.message.tool_calls.length > 0) {
-          let toolResults = [];
-          for (const toolCall of reply.message.tool_calls) {
-            console.log(`Tool call: ${toolCall.function.name} with arguments: ${JSON.stringify(toolCall.function.arguments)}`);
-            let result = await toolHandler.handleTool(toolCall.function.name, toolCall.function.arguments);
-            chat.push({role: 'user', content: `${result}`});
-          }
-          reply = await sendTextToOllama('4skl/gemma4-e4b-mtp', chat, { system: 'You are a home assistant agent who gives a status of what changed once all tools are used.', tools: availableTools });
-        }
-        // console.log(`Creating audio reply for: ${reply}`);
-        const audioBuffer = await kokoroSpeech(reply.message.content, { voice: 'af_heart', speed: 1.0, responseFormat: 'mp3' });
-        res.json({ reply: reply.message.content, audio: audioBuffer });
+        const homeReply = await runHomeAgent(text);
+        // console.log(`Creating audio reply for: ${homeReply}`);
+        const audioBuffer = await kokoroSpeech(homeReply, { voice: 'af_heart', speed: 1.0, responseFormat: 'mp3' });
+        res.json({ reply: homeReply, audio: audioBuffer });
       } else {
         const reply = await sendTextToOllama('4skl/gemma4-e4b-mtp', text, { system: 'You are a helpful assistant. You will keep responses succinct and within a 250 word limit while including all important perspectives.' });
         // console.log(`Creating audio reply for: ${reply.message.content}`);
@@ -214,13 +241,28 @@ app.post(
       }
     } catch (err) {
       console.log('Error in transcribe:', err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err.message, audio: await errorAudio(err.message) });
     } finally {
       const tempFiles = [webmPath, `${webmPath}.wav`, `${webmPath}.txt`, `${webmPath}.srt`];
       await Promise.all(tempFiles.map((f) => fsp.rm(f, { force: true }).catch(() => { })));
     }
   }
 );
+
+app.post('/command', async (req, res) => {
+  const { request } = req.body || {};
+  if (!request || typeof request !== 'string' || request.trim().length === 0) {
+    return res.status(400).json({ error: 'Missing body: send { "request": "..." } as JSON.' });
+  }
+
+  try {
+    const reply = await runHomeAgent(request);
+    res.json({ reply });
+  } catch (err) {
+    console.log('Error in command:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 async function StartServer() {
   try {

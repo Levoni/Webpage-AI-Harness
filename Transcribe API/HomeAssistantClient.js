@@ -150,6 +150,44 @@ class HomeAssistantClient {
     });
   }
 
+  /**
+   * Trigger a Home Assistant script.
+   *
+   * @param {string} scriptId - The script's entity ID (e.g. "script.lights_on") or its name.
+   * @param {Object} [options] - Additional service options.
+   */
+  async triggerScript(scriptId, options = {}) {
+    if (!scriptId) {
+      throw new Error("Script name is required to trigger a script.");
+    }
+
+    const entityId = scriptId.startsWith("script.") ? scriptId : `script.${scriptId}`;
+
+    return this.callService("script", "turn_on", {
+      entity_id: entityId,
+      ...options
+    });
+  }
+
+  /**
+   * Trigger a Home Assistant scene.
+   *
+   * @param {string} sceneId - The scene's entity ID (e.g. "scene.movie_night") or its name.
+   * @param {Object} [options] - Additional service options.
+   */
+  async triggerScene(sceneId, options = {}) {
+    if (!sceneId) {
+      throw new Error("Scene name is required to trigger a scene.");
+    }
+
+    const entityId = sceneId.startsWith("scene.") ? sceneId : `scene.${sceneId}`;
+
+    return this.callService("scene", "turn_on", {
+      entity_id: entityId,
+      ...options
+    });
+  }
+
   // ---------------------------------------------------------
   // WEBSOCKET
   // ---------------------------------------------------------

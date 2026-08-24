@@ -50,6 +50,20 @@
       min-height: 10rem;
       font-family: monospace;
     }
+
+    #commandInput {
+      width: 100%;
+      max-width: 420px;
+      padding: 0.6rem 0.75rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+
+    #commandResponse {
+      min-height: 10rem;
+    }
   </style>
 </head>
 <body>
@@ -61,6 +75,13 @@
   <button id="micButton">🎙️ Click to listen</button>
   <p id="status">Press the button to start recording.</p>
   <textarea id="response" rows="8" readonly></textarea>
+
+  <div id="commandForm">
+    <label for="commandInput">Send a command to the home agent</label>
+    <input id="commandInput" type="text" placeholder="e.g. turn on the living room lights" />
+    <button type="button" id="commandButton">Send</button>
+  </div>
+  <textarea id="commandResponse" rows="4" readonly></textarea>
 
   <script>
     // ---- Auth guard: require a token cookie, verify it, otherwise go to login ----
@@ -105,6 +126,9 @@
     const button = document.getElementById("micButton");
     const status = document.getElementById("status");
     const responseBox = document.getElementById("response");
+    const commandInput = document.getElementById("commandInput");
+    const commandButton = document.getElementById("commandButton");
+    const commandResponse = document.getElementById("commandResponse");
 
     function toggleListening() {
       if (isListening) {
@@ -168,6 +192,18 @@
       }).then(res => res.json())
         .then(data => {
           console.log(data);
+          if (data.error) {
+            // API failed (e.g. Ollama could not be reached) — show the
+            // message as text and play the error audio if it was returned.
+            responseBox.value = data.error;
+            status.textContent = data.error;
+            if (data.audio) {
+              playMp3(data.audio).catch(err => {
+                console.error("Error playing audio:", err);
+              });
+            }
+            return;
+          }
           responseBox.value = data.reply || "";
           let audioBuffer = data.audio; // Assuming the API returns audio data in a suitable format
           
@@ -186,6 +222,38 @@
         })
         .catch(() => {
           status.textContent = "Error sending audio.";
+        });
+    }
+
+    function sendCommand() {
+      const request = commandInput.value.trim();
+      if (!request) return;
+
+      commandResponse.value = "";
+      commandButton.disabled = true;
+      status.textContent = "Sending command...";
+
+      fetch(API_BASE + "/command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.error) {
+            commandResponse.value = data.error;
+            status.textContent = data.error;
+            return;
+          }
+          commandResponse.value = data.reply || "";
+          status.textContent = "Command processed.";
+        })
+        .catch((err) => {
+          console.error("Error sending command:", err);
+          status.textContent = "Error sending command.";
+        })
+        .finally(() => {
+          commandButton.disabled = false;
         });
     }
 
@@ -223,6 +291,12 @@
     }
 
     button.addEventListener("click", toggleListening);
+    commandButton.addEventListener("click", sendCommand);
+    commandInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        sendCommand();
+      }
+    });
   </script>
 </body>
 </html>

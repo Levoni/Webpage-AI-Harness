@@ -10,7 +10,7 @@ const availableTools = [
                 "properties": {
                     "entity": {
                         "type": "string",
-                        "description": "Entity ID of the light to turn on",
+                        "description": "Entity of the light to turn on",
                     },
                     "brightness": {
                         "type": "integer",
@@ -31,7 +31,7 @@ const availableTools = [
                 "properties": {
                     "entity": {
                         "type": "string",
-                        "description": "Entity ID of the light to turn off",
+                        "description": "Entity of the light to turn off",
                     }
                 },
                 "required": ["entity"],
@@ -63,17 +63,51 @@ const availableTools = [
     {
         "type": "function",
         "function": {
-            "name": "get_home_entities_context",
-            "description": "Get a list of entities from Home Assistant, optionally filtered by domain.",
+            "name": "get_home_entities",
+            "description": "Get a list of entities with their IDs and states from Home Assistant, optionally filtered by domain.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "domain": {
                         "type": "string",
-                        "description": "The domain to filter entities by (e.g., 'light', 'sensor')."
+                        "description": "The domain to filter entities by (e.g., 'light', 'sensor', 'script')."
                     }
                 },
                 "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "trigger_script",
+            "description": "Trigger a Home Assistant script by name to run.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "entity": {
+                        "type": "string",
+                        "description": "The entity of the script to trigger (e.g., 'lights_on')"
+                    }
+                },
+                "required": ["entity"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_scene",
+            "description": "Sets a Home Assistant scene by entity.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "entity": {
+                        "type": "string",
+                        "description": "The entity of the scene to set (e.g., 'scene.movie_night')"
+                    }
+                },
+                "required": ["entity"]
             }
         }
     }
@@ -93,8 +127,12 @@ class ToolHandler {
                 return await this.handleTurnOffLight(toolArgs);
             case "turn_on_lights_in_area":
                 return await this.handleTurnOnLightsInArea(toolArgs);
-            case "get_home_entities_context":
+            case "get_home_entities":
                 return await this.handleGetHomeEntities(toolArgs);
+            case "trigger_script":
+                return await this.handleTriggerScript(toolArgs);
+            case "set_scene":
+                return await this.handleSettingScene(toolArgs);
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -155,6 +193,33 @@ class ToolHandler {
             return `Lights turned on successfully in area "${area}" (${entityIds.length} light${entityIds.length === 1 ? '' : 's'}).`;
         } catch (error) {
             return `Failed: turning on lights in area "${area}": ${error.message}`;
+        }
+    }
+
+    async handleTriggerScript({ entity }) {
+        if (!entity) {
+            return 'Failed: Script name is required to trigger a script.';
+        }
+        try {
+            const result = await this.homeAssistantClient.triggerScript(entity);
+            return result ? `Script "${entity}" triggered successfully.` : `Failed: did not trigger the script.`;
+        } catch (error) {
+            return `Failed: triggering script "${entity}": ${error.message}`;
+        }
+    }
+
+    async handleSettingScene({ entity }) {
+        if (!entity) {
+            return 'Failed: Scene entity is required to trigger a scene.';
+        }
+        if (!this.entityStore.get(entity)) {
+            return 'Failed: scene not found.'; // Entity not found in the store
+        }
+        try {
+            const result = await this.homeAssistantClient.triggerScene(entity);
+            return result ? `Scene "${entity}" triggered successfully.` : `Failed: did not trigger the scene.`;
+        } catch (error) {
+            return `Failed: triggering scene "${entity}": ${error.message}`;
         }
     }
 }
