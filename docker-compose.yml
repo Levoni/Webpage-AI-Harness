@@ -7,12 +7,13 @@ services:
       dockerfile: Dockerfile
     container_name: voice-ai-api
     environment:
-      - HA_URL=${HA_URL:-http://192.168.0.176:8123}
+      - HA_URL=${HA_URL:-http://192.168.0.1:8123}
       - HA_TOKEN=${HA_TOKEN}
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - WHISPER_CLI=${WHISPER_CLI:-/app/whisper.cpp/build/bin/Release/whisper-cli}
       - WHISPER_MODEL=${WHISPER_MODEL:-/app/whisper.cpp/ggml-base.bin}
       - FFMPEG=${FFMPEG:-ffmpeg}
+      - KOKORO_BASE_URL=${KOKORO_BASE_URL:-http://192.168.0.1:8880}
     volumes:
       - /tmp/whisper-work:/tmp/whisper-work
     networks:

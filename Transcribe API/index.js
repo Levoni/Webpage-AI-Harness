@@ -133,7 +133,7 @@ async function sendTextToOllama(model, chat, { system, stream = false, tools = n
 }
 
 async function kokoroSpeech(text, {
-  baseUrl = 'http://192.168.0.175:8880',
+  baseUrl = process.env.KOKORO_BASE_URL,
   voice = 'af_heart',
   speed = 1.0,
   responseFormat = 'mp3'
