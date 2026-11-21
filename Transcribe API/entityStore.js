@@ -244,14 +244,25 @@ class EntityStore {
       return;
     }
 
-    const newState = event.new_state;
+    /*
+     * Home Assistant state_changed events
+     * nest their payload under "data".
+     */
+    const data =
+      event.data || {};
+
+    const entityId =
+      data.entity_id;
+
+    const newState =
+      data.new_state;
 
     /*
      * Entity was removed.
      */
     if (!newState) {
-      if (event.entity_id) {
-        this.remove(event.entity_id);
+      if (entityId) {
+        this.remove(entityId);
       }
 
       return;
@@ -259,7 +270,7 @@ class EntityStore {
 
     const existing =
       this.entities.get(
-        event.entity_id
+        entityId
       );
 
     /*

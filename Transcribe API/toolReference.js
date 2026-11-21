@@ -119,6 +119,28 @@ class ToolHandler {
         this.entityStore = entityStore;
     }
 
+    /**
+     * Refresh one entity's state in the local store
+     * after a successful action (safety net in case
+     * the state_changed subscription is down).
+     */
+    async syncEntityState(entityId) {
+        try {
+            const state = await this.homeAssistantClient.getState(entityId);
+            if (this.entityStore) {
+                const existing = this.entityStore.get(entityId);
+                this.entityStore.handleStateChanged({
+                    data: {
+                        entity_id: entityId,
+                        new_state: state
+                    }
+                });
+            }
+        } catch (error) {
+            console.error(`Failed to sync state for ${entityId}:`, error.message);
+        }
+    }
+
     async handleTool(toolName, toolArgs) {
         switch (toolName) {
             case "turn_on_light":
@@ -157,6 +179,7 @@ class ToolHandler {
         }
         try {
             const result = await this.homeAssistantClient.turnOnLight(entity, { brightness });
+            await this.syncEntityState(entity);
             return result ? `Light "${entity}" turned on successfully.` : 'Failed: did not turn on the light.';
         } catch (error) {
             return `Failed: turning on light: ${error.message}`;
@@ -173,6 +196,7 @@ class ToolHandler {
         }
         try {
             const result = await this.homeAssistantClient.turnOffLight(entity);
+            await this.syncEntityState(entity);
             return result ? `Light "${entity}" turned off successfully.` : 'Failed: did not turn off the light.';
         } catch (error) {
             return `Failed: turning off light: ${error.message}`;
@@ -190,6 +214,7 @@ class ToolHandler {
         try {
             const entityIds = lights.map(l => l.entity_id);
             const result = await this.homeAssistantClient.turnOnLights(entityIds, { brightness });
+            await Promise.all(entityIds.map(id => this.syncEntityState(id)));
             return `Lights turned on successfully in area "${area}" (${entityIds.length} light${entityIds.length === 1 ? '' : 's'}).`;
         } catch (error) {
             return `Failed: turning on lights in area "${area}": ${error.message}`;
@@ -217,6 +242,7 @@ class ToolHandler {
         }
         try {
             const result = await this.homeAssistantClient.triggerScene(entity);
+            await this.syncEntityState(entity);
             return result ? `Scene "${entity}" triggered successfully.` : `Failed: did not trigger the scene.`;
         } catch (error) {
             return `Failed: triggering scene "${entity}": ${error.message}`;
