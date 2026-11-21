@@ -157,7 +157,7 @@ class ToolHandler {
         }
         try {
             const result = await this.homeAssistantClient.turnOnLight(entity, { brightness });
-            return result ? 'Light turned on successfully.' : 'Failed: did not turn on the light.';
+            return result ? `Light "${entity}" turned on successfully.` : 'Failed: did not turn on the light.';
         } catch (error) {
             return `Failed: turning on light: ${error.message}`;
         }
@@ -173,7 +173,7 @@ class ToolHandler {
         }
         try {
             const result = await this.homeAssistantClient.turnOffLight(entity);
-            return result ? 'Light turned off successfully.' : 'Failed: did not turn off the light.';
+            return result ? `Light "${entity}" turned off successfully.` : 'Failed: did not turn off the light.';
         } catch (error) {
             return `Failed: turning off light: ${error.message}`;
         }

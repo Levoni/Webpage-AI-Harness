@@ -27,7 +27,9 @@ const WHISPER_MODEL = process.env.WHISPER_MODEL || './whisper.cpp/ggml-base.bin'
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 // Ollama listens on localhost by default, port 11434
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
+const KOKORO_BASE_URL = process.env.KOKORO_BASE_URL || "http://192.168.0.251:8880";
 const OLLAMA_UNREACHABLE_MESSAGE = "Ollama could not be reached.";
+
 
 // Scratch dir for uploads + intermediate files
 const WORK_DIR = path.join(os.tmpdir(), `whisper-${process.pid}`);
@@ -133,7 +135,7 @@ async function sendTextToOllama(model, chat, { system, stream = false, tools = n
 }
 
 async function kokoroSpeech(text, {
-  baseUrl = process.env.KOKORO_BASE_URL,
+  baseUrl = KOKORO_BASE_URL,
   voice = 'af_heart',
   speed = 1.0,
   responseFormat = 'mp3'
@@ -172,15 +174,15 @@ async function kokoroSpeech(text, {
  */
 async function runHomeAgent(text) {
   const chat = [{ role: 'user', content: text }];
-  let reply = await sendTextToOllama('4skl/gemma4-e4b-mtp', chat, { system: 'You are a home assistant agent. You will resolve unknown entities with the get_home_entities tool and not ask the user for entity IDs.', tools: availableTools });
+  let reply = await sendTextToOllama('qwen3.8:27b', chat, { system: 'You are a home assistant agent. You will resolve unknown entities with the get_home_entities tool and not ask the user for entity IDs.', tools: availableTools });
   while (reply.message.tool_calls && reply.message.tool_calls.length > 0) {
+    chat.push({ role: 'assistant', content: reply.message.content ? reply.message.content : reply.message.thinking });
     for (const toolCall of reply.message.tool_calls) {
       console.log(`Tool call: ${toolCall.function.name} with arguments: ${JSON.stringify(toolCall.function.arguments)}`);
       const result = await toolHandler.handleTool(toolCall.function.name, toolCall.function.arguments);
       chat.push({ role: 'user', content: `${result}` });
     }
-
-    reply = await sendTextToOllama('4skl/gemma4-e4b-mtp', chat, { system: 'You are a home assistant agent who gives a status of what changed once all tools are used.', tools: availableTools });
+    reply = await sendTextToOllama('qwen3.8:27b', chat, { system: 'You are a home assistant agent who gives a concise under 10 word status of what changed once all tools are used.', tools: availableTools });
   }
   return reply.message.content;
 }
@@ -233,8 +235,9 @@ app.post(
         const audioBuffer = await kokoroSpeech(homeReply, { voice: 'af_heart', speed: 1.0, responseFormat: 'mp3' });
         res.json({ reply: homeReply, audio: audioBuffer });
       } else {
-        const reply = await sendTextToOllama('4skl/gemma4-e4b-mtp', text, { system: 'You are a helpful assistant. You will keep responses succinct and within a 250 word limit while including all important perspectives.' });
-        // console.log(`Creating audio reply for: ${reply.message.content}`);
+        const chat = [{ role: 'user', content: text }];
+        const reply = await sendTextToOllama('qwen3.8:27b', chat, { system: 'You are a helpful assistant. You will keep responses succinct and within a 250 word limit while including all important perspectives.' });
+        //console.log(`Creating audio reply for: ${reply.message.content}`);
         const audioBuffer = await kokoroSpeech(reply.message.content, { voice: 'af_heart', speed: 1.0, responseFormat: 'mp3' });
         console.log('sending reply');
         res.json({ reply: reply.message.content, audio: audioBuffer });
